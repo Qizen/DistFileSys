@@ -15,8 +15,12 @@ import Network.Wai
 import Network.Wai.Handler.Warp
 import Servant
 import GHC.Generics
+import System.IO
+import Control.Monad.IO.Class
+import System.Directory
 
-filePath = "../FileStore/"
+
+filePath = "FileStore/"
 
 data User = User
   { userId        :: Int
@@ -39,14 +43,19 @@ api :: Proxy API
 api = Proxy
 
 server :: Server API
-server = (return users')
-  :<|> getFile
+server =  return users'
+    :<|> getFile
   where
    -- users :: Handler [File]
    -- users = return users'
     getFile :: Maybe String -> Handler [DfsFile]
     getFile Nothing = do return [DfsFile "ERROR" "ERROR" "ERROR"]
-    getFile (Just fileName) = do return [DfsFile "Foo Bar Baz: An Apocalyptic Love Story" "2017/01/14" "foob.txt"] 
+    getFile (Just fn) = do
+      let fullPath = filePath ++ fn
+      contents <- liftIO $ readFile fullPath
+      date <- liftIO $ getModificationTime fullPath
+      return [DfsFile contents (show date) fullPath]
+      --do return [DfsFile "Foo Bar Baz: An Apocalyptic Love Story" "2017/01/14" "foob.txt"] 
 
 users' :: [User]
 users' = [ User 1 "Isaac" "Newton"
