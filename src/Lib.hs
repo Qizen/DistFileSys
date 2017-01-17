@@ -31,7 +31,8 @@ data User = User
 $(deriveJSON defaultOptions ''User)
 
 type API = "users" :> Get '[JSON] [User]
-  :<|> "getFile" :> QueryParam "name" String :> Get '[JSON] [DfsFile]
+  :<|> "getFile"   :> QueryParam "name" String :> Get '[JSON] [DfsFile]
+  :<|> "postFile"  :> ReqBody '[JSON] DfsFile  :> Post '[JSON] Bool 
 
 startApp :: IO ()
 startApp = run 8080 app
@@ -45,6 +46,7 @@ api = Proxy
 server :: Server API
 server =  return users'
     :<|> getFile
+    :<|> postFile
   where
    -- users :: Handler [File]
    -- users = return users'
@@ -55,7 +57,12 @@ server =  return users'
       contents <- liftIO $ readFile fullPath
       date <- liftIO $ getModificationTime fullPath
       return [DfsFile contents (show date) fullPath]
-      --do return [DfsFile "Foo Bar Baz: An Apocalyptic Love Story" "2017/01/14" "foob.txt"] 
+      --do return [DfsFile "Foo Bar Baz: An Apocalyptic Love Story" "2017/01/14" "foob.txt"]
+
+    postFile :: DfsFile -> Handler Bool
+    postFile f@DfsFile{contents = c, lastModified = lm, name = n} = liftIO $ do
+      writeFile (filePath ++ n) c
+      return True
 
 users' :: [User]
 users' = [ User 1 "Isaac" "Newton"
