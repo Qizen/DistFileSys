@@ -32,7 +32,8 @@ $(deriveJSON defaultOptions ''User)
 
 type API = "users" :> Get '[JSON] [User]
   :<|> "getFile"   :> QueryParam "name" String :> Get '[JSON] [DfsFile]
-  :<|> "postFile"  :> ReqBody '[JSON] DfsFile  :> Post '[JSON] Bool 
+  :<|> "postFile"  :> ReqBody '[JSON] DfsFile  :> Post '[JSON] Bool
+  :<|> "listFiles" :> Get '[JSON] [DfsDateName]
 
 startApp :: IO ()
 startApp = run 8080 app
@@ -47,6 +48,7 @@ server :: Server API
 server =  return users'
     :<|> getFile
     :<|> postFile
+    :<|> listFiles
   where
    -- users :: Handler [File]
    -- users = return users'
@@ -64,6 +66,15 @@ server =  return users'
       writeFile (filePath ++ n) c
       return True
 
+    listFiles :: Handler [DfsDateName]
+    listFiles = liftIO $ do
+      fs <- listDirectory filePath
+      dns <- mapM (\f -> do
+               t <- getModificationTime (filePath ++ f)
+               return $ DfsDateName f (show t)) fs
+      return dns
+      
+      
 users' :: [User]
 users' = [ User 1 "Isaac" "Newton"
         , User 2 "Albert" "Einstein"
@@ -73,4 +84,9 @@ data DfsFile = DfsFile
   { contents      :: String
   , lastModified  :: String
   , name          :: String
+  } deriving (Generic, ToJSON, FromJSON, Show)
+
+data DfsDateName = DfsDateName
+  { dndate          :: String
+  , dnname          :: String
   } deriving (Generic, ToJSON, FromJSON, Show)
