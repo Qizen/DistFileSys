@@ -1,6 +1,0 @@
-This is a file
-It has lines
-It has many lines
-file file file
-
-fab times.
