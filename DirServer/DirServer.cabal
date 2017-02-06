@@ -21,6 +21,8 @@ library
                      , servant-server
                      , wai
                      , warp
+                     , directory
+                     , CommonApi
   default-language:    Haskell2010
 
 executable DirServer-exe
