@@ -23,6 +23,7 @@ library
                      , warp
                      , directory
                      , CommonApi
+                     , network
   default-language:    Haskell2010
 
 executable DirServer-exe

@@ -42,14 +42,12 @@ data DfsDateName = DfsDateName
 
 $(deriveJSON defaultOptions ''User)
 
-type FileApi =
-       "users" :> Get '[JSON] [User]
+type FileApi = "users" :> Get '[JSON] [User]
   :<|> "getFile"   :> QueryParam "name" String :> Get '[JSON] [DfsFile]
   :<|> "postFile"  :> ReqBody '[JSON] DfsFile  :> Post '[JSON] Bool
   :<|> "listFiles" :> Get '[JSON] [DfsDateName]
 
-type DirApi =
-       "registerFileServer" :> RemoteHost :> Post '[JSON] String
-  :<|> "mkdir" :> QueryParam "path" String :> QueryParam "name" String :> Post '[JSON] Bool
-  :<|> "ls" :> QueryParam "path" String :> Post '[JSON] [DfsDirContents]
-  :<|> "createFile" :> QueryParam "path" String :> QueryParam "name" :> Post '[JSON] Bool
+type DirApi = "registerFileServer" :> RemoteHost :> Post '[JSON] String
+  :<|> "mkdir" :> Capture "path" String :> QueryParam "foldName" String :> Get '[JSON] Bool
+  :<|> "ls" :> Capture "path" String :> Get '[JSON] [DfsDirContents]
+  :<|> "createFile" :> Capture "path" String :> Get '[JSON] Bool
