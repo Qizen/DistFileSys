@@ -23,6 +23,7 @@ library
                      , servant-server
                      , wai
                      , warp
+                     , CommonApi
   default-language:    Haskell2010
 
 executable DFS-exe

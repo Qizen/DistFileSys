@@ -1,6 +1,6 @@
 module Main where
 
-import Lib
+import CommonApi
 
 main :: IO ()
-main = startApp
+main = return ()

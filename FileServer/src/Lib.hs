@@ -18,22 +18,9 @@ import GHC.Generics
 import System.IO
 import Control.Monad.IO.Class
 import System.Directory
-
+import CommonApi
 
 filePath = "FileStore/"
-
-data User = User
-  { userId        :: Int
-  , userFirstName :: String
-  , userLastName  :: String
-  } deriving (Eq, Show)
-
-$(deriveJSON defaultOptions ''User)
-
-type API = "users" :> Get '[JSON] [User]
-  :<|> "getFile"   :> QueryParam "name" String :> Get '[JSON] [DfsFile]
-  :<|> "postFile"  :> ReqBody '[JSON] DfsFile  :> Post '[JSON] Bool
-  :<|> "listFiles" :> Get '[JSON] [DfsDateName]
 
 startApp :: IO ()
 startApp = run 8080 app
@@ -41,10 +28,10 @@ startApp = run 8080 app
 app :: Application
 app = serve api server
 
-api :: Proxy API
+api :: Proxy FileApi
 api = Proxy
 
-server :: Server API
+server :: Server FileApi
 server =  return users'
     :<|> getFile
     :<|> postFile
@@ -80,13 +67,3 @@ users' = [ User 1 "Isaac" "Newton"
         , User 2 "Albert" "Einstein"
         ]
         
-data DfsFile = DfsFile
-  { contents      :: String
-  , lastModified  :: String
-  , name          :: String
-  } deriving (Generic, ToJSON, FromJSON, Show)
-
-data DfsDateName = DfsDateName
-  { dndate          :: String
-  , dnname          :: String
-  } deriving (Generic, ToJSON, FromJSON, Show)
