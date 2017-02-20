@@ -20,10 +20,14 @@ library
                      , aeson
                      , bson
                      , directory
-                     , servant-server
+                     , servant-server >= 0.9
+                     , servant-client
                      , wai
                      , warp
                      , CommonApi
+                     , network
+                     , transformers
+                     , http-client
   default-language:    Haskell2010
 
 executable DFS-exe

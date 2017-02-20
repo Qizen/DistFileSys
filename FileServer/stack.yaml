@@ -1,14 +1,18 @@
 # For more information, see: https://github.com/commercialhaskell/stack/blob/release/doc/yaml_configuration.md
 
 # Specifies the GHC version and set of packages available (e.g., lts-3.5, nightly-2015-09-21, ghc-7.10.2)
-resolver: lts-7.15
+resolver: nightly-2017-02-20
 
 # Local packages, usually specified by relative directory name
 packages:
 - '.'
 - ./../CommonApi
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
-extra-deps: []
+extra-deps:
+- mongoDB-2.1.1.1
+- hashtables-1.2.1.0
+- vector-0.11.0.0
+- primitive-0.6.1.0
 
 # Override default flag values for local packages and extra-deps
 flags: {}

@@ -10,11 +10,14 @@ import Data.Aeson.TH
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Servant
+import Servant.Client
+import Network.HTTP.Client (newManager, defaultManagerSettings)
 import GHC.Generics
 import System.IO
 import Control.Monad.IO.Class
 import System.Directory
 import Network.Socket
+import Control.Monad.Trans.Except
 import CommonApi
 
 startApp :: IO ()
@@ -31,21 +34,47 @@ server = registerFileServer
   :<|> mkdir
   :<|> ls
   :<|> createFile
+  :<|> returnUsers
 
-registerFileServer :: a -> Handler String
-registerFileServer sock = return "NOT IMPLEMENTED"
+fileApi :: Proxy FileApi
+fileApi = Proxy
 
-mkdir :: String -> Maybe String -> Handler Bool
+users :: ClientM [User]
+getFile :: Maybe String -> ClientM [DfsFile]
+postFile :: DfsFile -> ClientM Bool
+listFiles :: ClientM [DfsDateName]
+
+
+users :<|> getFile :<|> postFile :<|> listFiles = client fileApi
+
+registerFileServer :: SockAddr -> Handler String
+registerFileServer sock@(SockAddrInet port addr) = do
+  (Just addrString, _) <- liftIO $ getNameInfo [NI_NUMERICHOST] True False sock
+  liftIO $ print $ "registering file server\nAddr: " ++ addrString ++ "\nPort: " ++ (show port)
+  manager <- liftIO $ newManager defaultManagerSettings
+  fileList <- liftIO $ runClientM (listFiles) (ClientEnv manager (BaseUrl Http addrString (read(show port) :: Int)  ""))
+  liftIO $ print fileList
+  return "NOT IMPLEMENTED"
+  --return []
+
+mkdir :: Maybe String -> Maybe String -> Handler Bool
 mkdir path foo = return False
 
-ls :: String -> Handler [DfsDirContents]
-ls path = return $ [DfsDirContents "foo" False]
+ls :: Maybe String -> Handler [DfsDirContents]
+ls path = do
+  liftIO $ print "Calling ls"
+  return $ [DfsDirContents "foo" False]
 
-createFile :: String -> Handler Bool
-createFile path = return False
+createFile :: Maybe String -> Handler Bool
+createFile path = do
+  return False
 
+returnUsers :: Handler [User]
+returnUsers = do
+  liftIO $ print "calling users"
+  return userlist
 
-users :: [User]
-users = [ User 1 "Isaac" "Newton"
+userlist :: [User]
+userlist = [ User 1 "Isaac" "Newton"
         , User 2 "Albert" "Einstein"
         ]

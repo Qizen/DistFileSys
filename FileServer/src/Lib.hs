@@ -14,9 +14,12 @@ import Data.Aeson.TH
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Servant
+import Servant.Client
+import Network.HTTP.Client (newManager, defaultManagerSettings)
 import GHC.Generics
 import System.IO
 import Control.Monad.IO.Class
+import Control.Monad.Trans.Except
 import System.Directory
 import CommonApi
 
@@ -27,6 +30,17 @@ startApp = run 8080 app
 
 app :: Application
 app = serve api server
+
+dirApi :: Proxy DirApi
+dirApi = Proxy
+
+registerFileServer :: ClientM String
+mkdir :: Maybe String -> Maybe String -> ClientM Bool
+ls :: Maybe String -> ClientM [DfsDirContents]
+createFile :: Maybe String -> ClientM Bool
+users :: ClientM [User]
+
+registerFileServer :<|> mkdir :<|> ls :<|> createFile :<|> users = client dirApi
 
 api :: Proxy FileApi
 api = Proxy
@@ -49,7 +63,7 @@ server =  return users'
       --do return [DfsFile "Foo Bar Baz: An Apocalyptic Love Story" "2017/01/14" "foob.txt"]
 
     postFile :: DfsFile -> Handler Bool
-    postFile f@DfsFile{contents = c, lastModified = lm, name = n} = liftIO $ do
+    postFile f@DfsFile{f_contents = c, f_lastModified = lm, f_name = n} = liftIO $ do
       writeFile (filePath ++ n) c
       return True
 
