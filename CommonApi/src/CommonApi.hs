@@ -57,7 +57,7 @@ type FileApi = "users" :> Get '[JSON] [User]
   :<|> "postFile"  :> ReqBody '[JSON] DfsFile  :> Post '[JSON] Bool
   :<|> "listFiles" :> Get '[JSON] [DfsDateName]
 
-type DirApi = "registerFileServer" :>  RemoteHost :> Get '[JSON] String
+type DirApi = "registerFileServer" :> RemoteHost :> QueryParam "port" Int :> Get '[JSON] String
   :<|> "mkdir" :> QueryParam "path" String :> QueryParam "foldName" String :> Get '[JSON] Bool
   :<|> "ls" :> QueryParam "path" String :> Get '[JSON] [DfsDirContents]
   :<|> "createFile" :> QueryParam "path" String :> Get '[JSON] Bool

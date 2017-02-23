@@ -18,15 +18,31 @@ import Servant.Client
 import Network.HTTP.Client (newManager, defaultManagerSettings)
 import GHC.Generics
 import System.IO
+import Control.Concurrent
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
 import System.Directory
 import CommonApi
 
 filePath = "FileStore/"
+dirServerIp = "127.0.0.1"
+dirServerPort = 12345
+
+ourPort :: Int
+ourPort = 8080
 
 startApp :: IO ()
-startApp = run 8080 app
+startApp = do
+   forkIO register
+   run ourPort app
+
+register :: IO ()
+register = do
+  threadDelay $ 5 * 1000000
+  print "registering with DirServer"
+  manager <- newManager defaultManagerSettings
+  runClientM (registerFileServer (Just ourPort)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort "" ))
+  return ()
 
 app :: Application
 app = serve api server
@@ -34,7 +50,7 @@ app = serve api server
 dirApi :: Proxy DirApi
 dirApi = Proxy
 
-registerFileServer :: ClientM String
+registerFileServer :: Maybe Int -> ClientM String
 mkdir :: Maybe String -> Maybe String -> ClientM Bool
 ls :: Maybe String -> ClientM [DfsDirContents]
 createFile :: Maybe String -> ClientM Bool

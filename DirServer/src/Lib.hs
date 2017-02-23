@@ -21,7 +21,7 @@ import Control.Monad.Trans.Except
 import CommonApi
 
 startApp :: IO ()
-startApp = run 8080 app
+startApp = run 12345 app
 
 app :: Application
 app = serve api server
@@ -47,8 +47,8 @@ listFiles :: ClientM [DfsDateName]
 
 users :<|> getFile :<|> postFile :<|> listFiles = client fileApi
 
-registerFileServer :: SockAddr -> Handler String
-registerFileServer sock@(SockAddrInet port addr) = do
+registerFileServer :: SockAddr -> Maybe Int -> Handler String
+registerFileServer sock@(SockAddrInet _ addr) (Just port) = do
   (Just addrString, _) <- liftIO $ getNameInfo [NI_NUMERICHOST] True False sock
   liftIO $ print $ "registering file server\nAddr: " ++ addrString ++ "\nPort: " ++ (show port)
   manager <- liftIO $ newManager defaultManagerSettings
@@ -56,6 +56,7 @@ registerFileServer sock@(SockAddrInet port addr) = do
   liftIO $ print fileList
   return "NOT IMPLEMENTED"
   --return []
+registerFileServer _ Nothing = return "ERROR port needs to be defined"
 
 mkdir :: Maybe String -> Maybe String -> Handler Bool
 mkdir path foo = return False
