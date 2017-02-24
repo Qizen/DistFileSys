@@ -4,11 +4,16 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module CommonApi where
 
 import Data.Aeson
 import Data.Aeson.TH
+import Data.Bson.Generic
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Servant
@@ -38,17 +43,29 @@ data DfsFile = DfsFile
   { f_contents      :: String
   , f_lastModified  :: String
   , f_name          :: String
-  } deriving (Generic, ToJSON, FromJSON, Show)
+  } deriving (Eq, Generic, ToJSON, FromJSON, ToBSON, FromBSON, Show)
 
 data DfsDirContents = DfsDirContents
   { dc_name         :: String
   , dc_isFolder     :: Bool
-  } deriving (Generic, ToJSON, FromJSON, Show)
+  } deriving (Eq, Generic, ToJSON, FromJSON, ToBSON, FromBSON, Show)
 
 data DfsDateName = DfsDateName
   { dndate          :: String
   , dnname          :: String
-  } deriving (Generic, ToJSON, FromJSON, Show)
+  } deriving (Eq, Generic, ToJSON, FromJSON, ToBSON, FromBSON, Show)
+
+data DfsFileRef = DfsFileRef
+  { fr_mData :: DfsDateName
+  , fr_ip    :: String
+  , fr_port  :: String
+  } deriving (Eq, Generic, ToJSON, FromJSON, ToBSON, FromBSON, Show)
+
+deriving instance FromBSON String
+deriving instance ToBSON String
+
+deriving instance FromBSON Bool
+deriving instance ToBSON Bool
 
 $(deriveJSON defaultOptions ''User)
 
@@ -104,8 +121,8 @@ mongoDbIp = return "127.0.0.1"
 
 -- | The port number of the mongoDB database that devnostics-rest uses to store and access data
 mongoDbPort :: IO Integer
-mongoDbPort = return $ 27017 -- 27017 is the default mongodb port
+mongoDbPort = return $ (27017 :: Integer) -- 27017 is the default mongodb port
 
 -- | The name of the mongoDB database that devnostics-rest uses to store and access data
 mongoDbDatabase :: IO String
-mongoDbDatabase = return "USEHASKELLDB"
+mongoDbDatabase = return "DFS_DB"

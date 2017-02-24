@@ -18,6 +18,7 @@ library
   exposed-modules:     CommonApi
   build-depends:       base >= 4.7 && < 5
                      , aeson
+                     , bson-generic
                      , directory
                      , servant-server
                      , wai

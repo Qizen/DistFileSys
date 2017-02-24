@@ -1,12 +1,23 @@
 {-# LANGUAGE DataKinds       #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeOperators   #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric   #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Lib
     ( startApp
     ) where
 
 import Data.Aeson
 import Data.Aeson.TH
+import Data.Bson.Generic
+import Data.Maybe
+import Database.MongoDB
 import Network.Wai
 import Network.Wai.Handler.Warp
 import Servant
@@ -53,9 +64,22 @@ registerFileServer sock@(SockAddrInet _ addr) (Just port) = do
   liftIO $ print $ "registering file server\nAddr: " ++ addrString ++ "\nPort: " ++ (show port)
   manager <- liftIO $ newManager defaultManagerSettings
   fileList <- liftIO $ runClientM (listFiles) (ClientEnv manager (BaseUrl Http addrString (read(show port) :: Int)  ""))
-  liftIO $ print fileList
-  return "NOT IMPLEMENTED"
-  --return []
+  case fileList of
+    Left e -> return "FAILURE"
+    Right files -> do 
+      liftIO $ print files
+      let refList = map (\file -> DfsFileRef file addrString (show port)) files
+      liftIO $ print refList
+      --TODO save server too
+      liftIO $ mapM  (\file -> withMongoDbConnection $ (upsert (select ["_id" =: (dnname (fr_mData file))] "FILES") $ toBSON file)) refList
+      --just for testing:
+      liftIO $ print "Test"
+      retVals <- liftIO $ withMongoDbConnection $ do
+        refs <- find (select [] "FILES") >>= drainCursor
+        return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsFileRef) refs
+      liftIO $ print retVals
+      return "Success"
+
 registerFileServer _ Nothing = return "ERROR port needs to be defined"
 
 mkdir :: Maybe String -> Maybe String -> Handler Bool
