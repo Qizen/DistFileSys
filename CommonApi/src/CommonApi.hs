@@ -57,8 +57,12 @@ data DfsDateName = DfsDateName
 
 data DfsFileRef = DfsFileRef
   { fr_mData :: DfsDateName
-  , fr_ip    :: String
-  , fr_port  :: String
+  , fr_serv  :: DfsServRef
+  } deriving (Eq, Generic, ToJSON, FromJSON, ToBSON, FromBSON, Show)
+
+data DfsServRef = DfsServRef
+  { sr_ip   :: String
+  , sr_port :: String
   } deriving (Eq, Generic, ToJSON, FromJSON, ToBSON, FromBSON, Show)
 
 deriving instance FromBSON String
@@ -77,7 +81,8 @@ type FileApi = "users" :> Get '[JSON] [User]
 type DirApi = "registerFileServer" :> RemoteHost :> QueryParam "port" Int :> Get '[JSON] String
   :<|> "mkdir" :> QueryParam "path" String :> QueryParam "foldName" String :> Get '[JSON] Bool
   :<|> "ls" :> QueryParam "path" String :> Get '[JSON] [DfsDirContents]
-  :<|> "createFile" :> QueryParam "path" String :> Get '[JSON] Bool
+  :<|> "createFile" :> ReqBody '[JSON] DfsFile :> Post '[JSON] Bool
+  :<|> "openFile" :> QueryParam "path" String :> Get '[JSON] (Maybe DfsFile)
   :<|> "users":> Get '[JSON] [User]
 
 -- MongoDB Functions from use-haskell

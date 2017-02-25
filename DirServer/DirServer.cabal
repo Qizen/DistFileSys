@@ -29,6 +29,9 @@ library
                      , network
                      , transformers
                      , http-client
+                     , random
+                     , text
+                     , split
   default-language:    Haskell2010
 
 executable DirServer-exe

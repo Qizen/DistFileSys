@@ -88,7 +88,7 @@ server =  return users'
       fs <- listDirectory filePath
       dns <- mapM (\f -> do
                t <- getModificationTime (filePath ++ f)
-               return $ DfsDateName f (show t)) fs
+               return $ DfsDateName (show t) f) fs
       return dns
       
       
