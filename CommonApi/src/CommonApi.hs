@@ -86,7 +86,7 @@ type DirApi = "registerFileServer" :> RemoteHost :> QueryParam "port" Int :> Get
   :<|> "openFile" :> QueryParam "path" String :> Get '[JSON] (Maybe DfsFile)
   :<|> "users":> Get '[JSON] [User]
 
-type AuthApi = "createUser" :> QueryParam "username" String :> QueryParam "password" String :> Post '[JSON] Bool
+type AuthApi = "createUser" :> QueryParam "username" String :> QueryParam "password" String :> Get '[JSON] Bool
   :<|> "login" :> QueryParam "username" String :> QueryParam "password" String :> Get '[JSON] (Either String String)
   
 -- MongoDB Functions from use-haskell

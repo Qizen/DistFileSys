@@ -51,29 +51,38 @@ api = Proxy
 server :: Server AuthApi
 server = createUser
   :<|> login
-  
+
+data Pass = Pass
+  { p_pass :: String
+  } deriving (Eq, Generic, ToJSON, FromJSON, ToBSON, FromBSON, Show)
+
 createUser :: Maybe String -> Maybe String -> Handler Bool
 createUser (Just username) (Just password) = do
   --TODO: check if there's already a user with this name
-  liftIO $ withMongoDbConnection $ (upsert (select ["_id" =: username] "USERS") (toBSON password))
+  liftIO $ print "before"
+  liftIO $ withMongoDbConnection $ (upsert (select ["_id" =: username] "USERS") (toBSON (Pass password)))
+  liftIO $ print "after"
   return True
 createUser _ _ = do
+  liftIO $ print "incorrect Params"
   return False
 
 login :: Maybe String -> Maybe String -> Handler (Either String String)
 login (Just username) (Just password)  = do
   ps <- liftIO $ withMongoDbConnection $ do
     refs <- find (select ["_id" =: username] "USERS") >>= drainCursor
-    return $ catMaybes $ map (\b -> fromBSON b :: (Maybe String)) refs
+    return $ catMaybes $ map (\b -> fromBSON b :: Maybe Pass) refs
   if ps == []
     then do
       return $ Left "User not found"
     else do
-      let p = ps!!0
+      let p = p_pass $ ps!!0
+      liftIO $ print $ "provided: " ++ password ++ "/nExpected: " ++ p
       if p == password
         then do 
           return $ Right "foo"
         else do
           return $ Left "Incorrect Password"
 login _ _ = do
+  liftIO $ print "incorrect"
   return $ Left "Incorrect Params"
