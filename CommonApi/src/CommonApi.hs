@@ -73,6 +73,7 @@ deriving instance ToBSON Bool
 
 $(deriveJSON defaultOptions ''User)
 
+-- APIs
 type FileApi = "users" :> Get '[JSON] [User]
   :<|> "getFile"   :> QueryParam "name" String :> Get '[JSON] [DfsFile]
   :<|> "postFile"  :> ReqBody '[JSON] DfsFile  :> Post '[JSON] Bool
@@ -85,6 +86,9 @@ type DirApi = "registerFileServer" :> RemoteHost :> QueryParam "port" Int :> Get
   :<|> "openFile" :> QueryParam "path" String :> Get '[JSON] (Maybe DfsFile)
   :<|> "users":> Get '[JSON] [User]
 
+type AuthApi = "createUser" :> QueryParam "username" String :> QueryParam "password" String :> Post '[JSON] Bool
+  :<|> "login" :> QueryParam "username" String :> QueryParam "password" String :> Get '[JSON] (Either String String)
+  
 -- MongoDB Functions from use-haskell
 -- | Mongodb helpers...
 

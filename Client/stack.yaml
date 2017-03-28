@@ -1,0 +1,14 @@
+flags: {}
+extra-package-dbs: []
+packages:
+- '.'
+- ./../CommonApi
+- location:
+      git: https://github.com/Palmik/bson-generic.git
+      commit: e078def65d0dee1ea7e3205f445e47d5937851f3
+extra-deps:
+- http-api-data-0.3.2
+- servant-0.9.1.1
+- servant-client-0.9.1.1
+- servant-server-0.9.1.1
+resolver: lts-7.19
