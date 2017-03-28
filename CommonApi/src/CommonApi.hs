@@ -31,6 +31,9 @@ import           Data.Time.Format             (defaultTimeLocale, formatTime)
 import           Database.MongoDB
 import           System.Environment           (getArgs, getProgName, lookupEnv)
 
+authServerIp = "127.0.0.1"
+authServerPort = "28645"
+
 -- Data Types
 
 data User = User

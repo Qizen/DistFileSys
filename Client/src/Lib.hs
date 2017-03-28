@@ -3,7 +3,6 @@
 {-# LANGUAGE TypeOperators   #-}
 module Lib
     ( startApp
-    , app
     ) where
 
 
@@ -29,27 +28,42 @@ import System.Random
 
 import CommonApi
 
-type API = "users" :> Get '[JSON] [User]
-
 startApp :: IO ()
 startApp = do
-  --return()
-  run 80808 app
+  print "Select an action"
+  a <- getLine
+  case a of
+    "createUser" -> runCreateUser
+    "login" -> runLogin
+  --  "getFile" -> runGetFile
+    _ -> print "Not a valid option"
+  startApp
+ -- run 80808 app
 
-app :: Application
-app = serve api server
+runCreateUser :: IO ()
+runCreateUser = do
+  print "Enter a username:\n"
+  u <- getLine
+  print "Enter a password:\n"
+  p <- getLine
+  manager <- newManager defaultManagerSettings
+  runClientM (createUser (Just u) (Just p)) (ClientEnv manager (BaseUrl Http (authServerIp) (read(authServerPort)::Int) ""))
+  return ()
 
-api :: Proxy API
-api = Proxy
+runLogin :: IO ()
+runLogin = do
+  print "Enter a username:\n"
+  u <- getLine
+  print "Enter a password:\n"
+  p <- getLine
+  manager <- newManager defaultManagerSettings
+  res <- runClientM (login (Just u) (Just p)) (ClientEnv manager (BaseUrl Http (authServerIp) (read(authServerPort)::Int) ""))
+  case res of
+    Left e -> print e
+    Right (Left e2) -> print e2
+    Right (Right token) -> print $ "SUCCESS! Token: " ++ token
+  return ()
 
-server :: Server API
-server = return userList
-
-userList :: [User]
-userList = [ User 1 "Isaac" "Newton"
-        , User 2 "Albert" "Einstein"
-        ]
-        
 fileApi :: Proxy FileApi
 fileApi = Proxy
 
@@ -73,3 +87,11 @@ openFile :: Maybe String -> ClientM (Maybe DfsFile)
 users :: ClientM [User]
 
 registerFileServer :<|> mkdir :<|> ls :<|> createFile :<|> openFile :<|> users = client dirApi
+
+authApi :: Proxy AuthApi
+authApi = Proxy
+
+createUser :: Maybe String -> Maybe String -> ClientM Bool
+login :: Maybe String -> Maybe String -> ClientM (Either String String)
+
+createUser :<|> login = client authApi
