@@ -8,6 +8,7 @@ module Lib
 
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
+--import Control.Concurrent.STM
 import Data.Aeson
 import Data.Aeson.TH
 import Data.Bson.Generic
@@ -28,17 +29,29 @@ import System.Random
 
 import CommonApi
 
-startApp :: IO ()
-startApp = do
+startApp :: Maybe String -> IO ()
+startApp mToken = do
   print "Select an action"
   a <- getLine
   case a of
-    "createUser" -> runCreateUser
-    "login" -> runLogin
-  --  "getFile" -> runGetFile
-    _ -> print "Not a valid option"
-  startApp
- -- run 80808 app
+    "createUser" -> do
+      runCreateUser
+      startApp mToken
+    "login" -> do
+      t <- runLogin
+      startApp t
+    "openFile" -> do
+      case mToken of
+        Nothing -> do
+          print $ "You are not logged in"
+          startApp mToken
+        Just t -> do
+          runGetFile t
+          startApp mToken
+    "quit" -> return ()
+    _ -> do
+      print "Not a valid option"
+      startApp mToken
 
 runCreateUser :: IO ()
 runCreateUser = do
@@ -47,21 +60,35 @@ runCreateUser = do
   print "Enter a password:\n"
   p <- getLine
   manager <- newManager defaultManagerSettings
-  runClientM (createUser (Just u) (Just p)) (ClientEnv manager (BaseUrl Http (authServerIp) (read(authServerPort)::Int) ""))
+  runClientM (createUser (Just u) (Just p)) (ClientEnv manager (BaseUrl Http authServerIp authServerPort ""))
   return ()
 
-runLogin :: IO ()
+runLogin :: IO (Maybe String)
 runLogin = do
   print "Enter a username:\n"
   u <- getLine
   print "Enter a password:\n"
   p <- getLine
   manager <- newManager defaultManagerSettings
-  res <- runClientM (login (Just u) (Just p)) (ClientEnv manager (BaseUrl Http (authServerIp) (read(authServerPort)::Int) ""))
+  res <- runClientM (login (Just u) (Just p)) (ClientEnv manager (BaseUrl Http authServerIp authServerPort ""))
   case res of
-    Left e -> print e
-    Right (Left e2) -> print e2
-    Right (Right token) -> print $ "SUCCESS! Token: " ++ token
+    Left e -> do
+      print e
+      return Nothing
+    Right (Left e2) -> do
+      print e2
+      return Nothing
+    Right (Right token) -> do
+      print $ "SUCCESS! Token: " ++ token
+      return (Just token)
+
+runGetFile :: String -> IO ()
+runGetFile t = do
+  print "Enter a filename"
+  fn <- getLine
+  manager <- newManager defaultManagerSettings
+  res <- runClientM (openFile (Just fn)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+  print res
   return ()
 
 fileApi :: Proxy FileApi

@@ -31,8 +31,10 @@ import           Data.Time.Format             (defaultTimeLocale, formatTime)
 import           Database.MongoDB
 import           System.Environment           (getArgs, getProgName, lookupEnv)
 
+dirServerIp = "127.0.0.1"
+dirServerPort = 12345 :: Int
 authServerIp = "127.0.0.1"
-authServerPort = "28645"
+authServerPort = 28645 :: Int
 
 -- Data Types
 

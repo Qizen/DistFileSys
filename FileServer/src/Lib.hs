@@ -25,8 +25,6 @@ import System.Directory
 import CommonApi
 
 filePath = "FileStore/"
-dirServerIp = "127.0.0.1"
-dirServerPort = 12345
 
 ourPort :: Int
 ourPort = 8080
@@ -53,10 +51,11 @@ dirApi = Proxy
 registerFileServer :: Maybe Int -> ClientM String
 mkdir :: Maybe String -> Maybe String -> ClientM Bool
 ls :: Maybe String -> ClientM [DfsDirContents]
-createFile :: Maybe String -> ClientM Bool
+createFile :: DfsFile -> ClientM Bool
+openFile :: Maybe String -> ClientM (Maybe DfsFile)
 users :: ClientM [User]
 
-registerFileServer :<|> mkdir :<|> ls :<|> createFile :<|> users = client dirApi
+registerFileServer :<|> mkdir :<|> ls :<|> createFile :<|> openFile :<|> users = client dirApi
 
 api :: Proxy FileApi
 api = Proxy
