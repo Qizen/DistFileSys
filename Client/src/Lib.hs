@@ -1,6 +1,14 @@
 {-# LANGUAGE DataKinds       #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeOperators   #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric   #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 module Lib
     ( startApp
     ) where
@@ -8,6 +16,7 @@ module Lib
 
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
+import Control.Monad
 --import Control.Concurrent.STM
 import Data.Aeson
 import Data.Aeson.TH
@@ -86,10 +95,38 @@ runGetFile :: String -> IO ()
 runGetFile t = do
   print "Enter a filename"
   fn <- getLine
-  manager <- newManager defaultManagerSettings
-  res <- runClientM (openFile (Just fn)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
-  print res
+  cachedFiles <- withMongoDbConnection $ do
+    refs <- find (select ["_id" =: fn] "CACHE") >>= drainCursor
+    return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsFile) refs
+  case cachedFiles of
+    [] -> do
+      print "Cache miss, querying server..."
+      manager <- newManager defaultManagerSettings
+      res <- runClientM (openFile (Just fn)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+      case res of
+        Left e -> print e
+        Right (Just r) -> do
+          cacheAdd r
+          print r
+        _ -> print "No file of that name exists"
+    _ -> do
+      print "cache hit!"
+      print $ cachedFiles!!0
   return ()
+
+cacheAdd :: DfsFile -> IO ()
+cacheAdd f = do
+   cacheExists <- withMongoDbConnection $ do
+     refs <- allCollections
+     return $ any (=="CACHE") refs
+   when (cacheExists == False) $ do  
+     withMongoDbConnection $ do
+       liftIO $ print "cache db missing, creating a new one..."
+       createCollection [Capped, MaxByteSize 100000, MaxItems 100] "CACHE"
+       return ()
+   withMongoDbConnection $ upsert (select ["_id" =: (f_name f)] "CACHE") $ toBSON f
+   print $ (f_name f) ++ " added to cache"
+   return ()
 
 fileApi :: Proxy FileApi
 fileApi = Proxy

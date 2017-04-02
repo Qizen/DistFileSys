@@ -74,7 +74,7 @@ server =  return users'
       let fullPath = filePath ++ fn
       contents <- liftIO $ readFile fullPath
       date <- liftIO $ getModificationTime fullPath
-      return [DfsFile contents (show date) fullPath]
+      return [DfsFile contents (show date) fn]
       --do return [DfsFile "Foo Bar Baz: An Apocalyptic Love Story" "2017/01/14" "foob.txt"]
 
     postFile :: DfsFile -> Handler Bool
