@@ -57,6 +57,15 @@ startApp mToken = do
         Just t -> do
           runGetFile t
           startApp mToken
+    "writeFile" -> do
+      case mToken of
+        Nothing -> do
+          print "You are not logged in"
+          startApp mToken
+        Just t -> do
+          runWriteFile t
+          startApp mToken
+      
     "quit" -> return ()
     _ -> do
       print "Not a valid option"
@@ -114,6 +123,67 @@ runGetFile t = do
       print $ cachedFiles!!0
   return ()
 
+runWriteFile :: String -> IO ()
+runWriteFile t = do
+  print "Enter a filepath"
+  path <- getLine
+  exists <- doesFileExist path
+  if (exists) then do
+    let s = (splitOn "/" path)
+    let name = s!!((length s)-1)
+    print $ "Checking for file " ++ name ++ " in cache"
+    cachedFiles <- withMongoDbConnection $ do
+      refs <- find (select ["_id" =: name] "CACHE") >>= drainCursor
+      return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsFile) refs
+    case cachedFiles of
+      [] -> do
+        print "Nothing in cache, proceeding with upload"
+        manager <- newManager defaultManagerSettings
+        contents <- readFile path
+        date <- getModificationTime path
+        let f = DfsFile contents (show date) name
+        result <- runClientM (createFile f) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+        case result of
+          Left e -> print e
+          Right r -> do
+            if r then print "Successfully uploaded" else print "ERROR uploading"
+      _ -> do
+        -- should get modification time only here, not entire file
+         manager <- newManager defaultManagerSettings
+         res <- runClientM (openFile (Just name)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+         case res of
+           Left e -> print e
+           Right Nothing -> do
+             sUp <- execWriteFile path
+             if sUp  then print "Successfully uploaded" else print "ERROR uploading"
+           Right (Just dFile) -> do
+             s <- getModificationTime path
+             if (f_lastModified dFile) == (show s)
+               then do
+                 print "cached file is same as server file, uploading"
+                 execWriteFile path
+                 return ()
+               else do
+                 print "cached file is out of date, proceed anyway? y/n"
+                 ans <- getLine
+                 case ans of
+                   "y" -> execWriteFile path >> return ()
+                   _ -> print dFile
+  else print "File does not exist"
+
+execWriteFile :: String -> IO Bool
+execWriteFile path = do
+  let s = (splitOn "/" path)
+  let name = s!!((length s)-1)
+  manager <- newManager defaultManagerSettings
+  contents <- readFile path
+  date <- getModificationTime path
+  let f = DfsFile contents (show date) name
+  result <- runClientM (createFile f) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+  case result of
+    Left e -> print e >> return False
+    Right b -> cacheAdd f >> return b
+    
 cacheAdd :: DfsFile -> IO ()
 cacheAdd f = do
    cacheExists <- withMongoDbConnection $ do
@@ -122,7 +192,9 @@ cacheAdd f = do
    when (cacheExists == False) $ do  
      withMongoDbConnection $ do
        liftIO $ print "cache db missing, creating a new one..."
-       createCollection [Capped, MaxByteSize 100000, MaxItems 100] "CACHE"
+       --TODO: can't change size of doc when updating a capped collection, so this doesn't work
+       -- need to find another way of limiting caching.
+       --createCollection [Capped, MaxByteSize 100000, MaxItems 100] "CACHE"
        return ()
    withMongoDbConnection $ upsert (select ["_id" =: (f_name f)] "CACHE") $ toBSON f
    print $ (f_name f) ++ " added to cache"
