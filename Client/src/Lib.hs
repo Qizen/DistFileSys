@@ -29,175 +29,216 @@ import GHC.Generics
 import Network.HTTP.Client (newManager, defaultManagerSettings)
 import Network.Socket
 import Network.Wai
-import Network.Wai.Handler.Warp
+import qualified  Network.Wai.Handler.Warp as W
 import Servant
 import Servant.Client
 import System.Directory
 import qualified System.IO as S
 import System.Random
+import System.Console.Haskeline
 
 import CommonApi
 
-startApp :: Maybe String -> IO ()
-startApp mToken = do
-  print "Select an action"
-  a <- getLine
+startApp :: IO ()
+startApp = runInputT defaultSettings (loop Nothing)
+
+loop :: Maybe String -> InputT IO ()
+loop mToken = do
+  a <- getInputLine "Select an Action\n"
   case a of
-    "createUser" -> do
+    Just "createUser" -> do
       runCreateUser
-      startApp mToken
-    "login" -> do
+      loop mToken
+    Just "login" -> do
       t <- runLogin
-      startApp t
-    "openFile" -> do
+      loop t
+    Just "openFile" -> do
       case mToken of
         Nothing -> do
-          print $ "You are not logged in"
-          startApp mToken
+          outputStrLn $ "You are not logged in"
+          loop mToken
         Just t -> do
           runGetFile t
-          startApp mToken
-    "writeFile" -> do
+          loop mToken
+    Just "writeFile" -> do
       case mToken of
         Nothing -> do
-          print "You are not logged in"
-          startApp mToken
+          outputStrLn "You are not logged in"
+          loop mToken
         Just t -> do
           runWriteFile t
-          startApp mToken
+          loop mToken
+    Just "lockFile" -> do
+      case mToken of
+        Nothing -> do
+          outputStrLn "You are not logged in"
+          loop mToken
+        Just t -> do
+          runLockFile t
+          loop mToken
+    Just "unlockFile" -> do
+      case mToken of
+        Nothing -> do
+          outputStrLn "You are not logged in"
+          loop mToken
+        Just t -> do
+          runUnlockFile t
+          loop mToken
       
-    "quit" -> return ()
+    Just "quit" -> return ()
     _ -> do
-      print "Not a valid option"
-      startApp mToken
+      outputStrLn "Not a valid option"
+      loop mToken
 
-runCreateUser :: IO ()
+runCreateUser :: InputT IO ()
 runCreateUser = do
-  print "Enter a username:\n"
-  u <- getLine
-  print "Enter a password:\n"
-  p <- getLine
-  manager <- newManager defaultManagerSettings
-  runClientM (createUser (Just u) (Just p)) (ClientEnv manager (BaseUrl Http authServerIp authServerPort ""))
+  u <- getInputLine "Enter a username:"
+  p <- getPassword (Just '*') "Enter a password:"
+  manager <- liftIO $ newManager defaultManagerSettings
+  liftIO $ runClientM (createUser (u) (p)) (ClientEnv manager (BaseUrl Http authServerIp authServerPort ""))
   return ()
 
-runLogin :: IO (Maybe String)
+runLogin :: InputT IO (Maybe String)
 runLogin = do
-  print "Enter a username:\n"
-  u <- getLine
-  print "Enter a password:\n"
-  p <- getLine
-  manager <- newManager defaultManagerSettings
-  res <- runClientM (login (Just u) (Just p)) (ClientEnv manager (BaseUrl Http authServerIp authServerPort ""))
+  u <- getInputLine "Enter a username:"
+  p <- getPassword (Just '*') "Enter a password:"
+  manager <- liftIO $ newManager defaultManagerSettings
+  res <- liftIO $ runClientM (login (u) (p)) (ClientEnv manager (BaseUrl Http authServerIp authServerPort ""))
   case res of
     Left e -> do
-      print e
+      outputStrLn $ show e
       return Nothing
     Right (Left e2) -> do
-      print e2
+      outputStrLn e2
       return Nothing
     Right (Right token) -> do
-      print $ "SUCCESS! Token: " ++ token
+      outputStrLn $ "SUCCESS! Token: " ++ token
       return (Just token)
 
-runGetFile :: String -> IO ()
+runGetFile :: String -> InputT IO ()
 runGetFile t = do
-  print "Enter a filename"
-  fn <- getLine
-  cachedFiles <- withMongoDbConnection $ do
+  fn <- getInputLine "Enter a filename"
+  cachedFiles <- liftIO $ withMongoDbConnection $ do
     refs <- find (select ["_id" =: fn] "CACHE") >>= drainCursor
     return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsFile) refs
   case cachedFiles of
     [] -> do
-      print "Cache miss, querying server..."
-      manager <- newManager defaultManagerSettings
-      res <- runClientM (openFile (Just fn)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+      outputStrLn "Cache miss, querying server..."
+      manager <- liftIO $ newManager defaultManagerSettings
+      res <- liftIO $ runClientM (openFile (fn)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
       case res of
-        Left e -> print e
+        Left e -> outputStrLn $ show e
         Right (Just r) -> do
           cacheAdd r
-          print r
-        _ -> print "No file of that name exists"
+          outputStrLn $ show r
+        _ -> outputStrLn "No file of that name exists"
     _ -> do
-      print "cache hit!"
-      print $ cachedFiles!!0
+      outputStrLn "cache hit!"
+      outputStrLn $ show $ cachedFiles!!0
   return ()
 
-runWriteFile :: String -> IO ()
+runWriteFile :: String -> InputT IO ()
 runWriteFile t = do
-  print "Enter a filepath"
-  path <- getLine
-  exists <- doesFileExist path
-  if (exists) then do
-    let s = (splitOn "/" path)
-    let name = s!!((length s)-1)
-    print $ "Checking for file " ++ name ++ " in cache"
-    cachedFiles <- withMongoDbConnection $ do
-      refs <- find (select ["_id" =: name] "CACHE") >>= drainCursor
-      return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsFile) refs
-    case cachedFiles of
-      [] -> do
-        print "Nothing in cache, proceeding with upload"
-        manager <- newManager defaultManagerSettings
-        contents <- readFile path
-        date <- getModificationTime path
-        let f = DfsFile contents (show date) name
-        result <- runClientM (createFile f) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
-        case result of
-          Left e -> print e
-          Right r -> do
-            if r then print "Successfully uploaded" else print "ERROR uploading"
-      _ -> do
-        -- should get modification time only here, not entire file
-         manager <- newManager defaultManagerSettings
-         res <- runClientM (openFile (Just name)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
-         case res of
-           Left e -> print e
-           Right Nothing -> do
-             sUp <- execWriteFile path
-             if sUp  then print "Successfully uploaded" else print "ERROR uploading"
-           Right (Just dFile) -> do
-             s <- getModificationTime path
-             if (f_lastModified dFile) == (show s)
-               then do
-                 print "cached file is same as server file, uploading"
-                 execWriteFile path
-                 return ()
-               else do
-                 print "cached file is out of date, proceed anyway? y/n"
-                 ans <- getLine
-                 case ans of
-                   "y" -> execWriteFile path >> return ()
-                   _ -> print dFile
-  else print "File does not exist"
+  mpath <- getInputLine "Enter a filepath"
+  case mpath of
+    Nothing -> outputStrLn "No path provided"
+    Just path -> do
+       exists <- liftIO $ doesFileExist path
+       if (exists) then do
+         let s = (splitOn "/" path)
+         let name = s!!((length s)-1)
+         outputStrLn $ "Checking for file " ++ name ++ " in cache"
+         cachedFiles <- liftIO $ withMongoDbConnection $ do
+           refs <- find (select ["_id" =: name] "CACHE") >>= drainCursor
+           return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsFile) refs
+         case cachedFiles of
+           [] -> do
+             outputStrLn "Nothing in cache, proceeding with upload"
+             manager <- liftIO $ newManager defaultManagerSettings
+             contents <- liftIO $ readFile path
+             date <- liftIO $ getModificationTime path
+             let f = DfsFile contents (show date) name
+             result <- liftIO $ runClientM (createFile f) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+             case result of
+               Left e -> outputStrLn $ show e
+               Right r -> do
+                 if r then outputStrLn "Successfully uploaded" else outputStrLn "ERROR uploading"
+           _ -> do
+             -- should get modification time only here, not entire file
+             manager <- liftIO $ newManager defaultManagerSettings
+             res <- liftIO $ runClientM (openFile (Just name)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+             case res of
+               Left e -> outputStrLn $ show e
+               Right Nothing -> do
+                 sUp <- execWriteFile path
+                 if sUp  then outputStrLn "Successfully uploaded" else outputStrLn "ERROR uploading"
+               Right (Just dFile) -> do
+                 s <- liftIO $ getModificationTime path
+                 if (f_lastModified dFile) == (show s)
+                   then do
+                     outputStrLn "cached file is same as server file, uploading"
+                     execWriteFile path
+                     return ()
+                   else do
+                     ans <- getInputLine "cached file is out of date, proceed anyway? y/n"
+                     case ans of
+                       Just "y" -> execWriteFile path >> return ()
+                       _ -> outputStrLn $ show  dFile
+         else outputStrLn "File does not exist"
 
-execWriteFile :: String -> IO Bool
+runLockFile :: String -> InputT IO ()
+runLockFile t = do
+  path <- getInputLine "Enter a filepath"
+  case path of
+    Nothing -> outputStrLn "No path provided"
+    p -> do
+      manager <- liftIO $ newManager defaultManagerSettings
+      res <- liftIO $ runClientM (lockFile (p)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+      case res of
+        Left e -> outputStrLn $ show e
+        Right r -> outputStrLn r        
+  return ()
+
+runUnlockFile :: String -> InputT IO ()
+runUnlockFile t = do
+  path <- getInputLine "Enter a filepath"
+  case path of
+    Nothing -> outputStrLn "No path provided"
+    p -> do
+      manager <- liftIO $ newManager defaultManagerSettings
+      res <- liftIO $ runClientM (unlockFile (p)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+      case res of
+        Left e -> outputStrLn $ show e
+        Right r -> outputStrLn r        
+  return ()
+
+execWriteFile :: String -> InputT IO Bool
 execWriteFile path = do
   let s = (splitOn "/" path)
   let name = s!!((length s)-1)
-  manager <- newManager defaultManagerSettings
-  contents <- readFile path
-  date <- getModificationTime path
+  manager <- liftIO $ newManager defaultManagerSettings
+  contents <- liftIO $ readFile path
+  date <- liftIO $ getModificationTime path
   let f = DfsFile contents (show date) name
-  result <- runClientM (createFile f) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+  result <- liftIO $ runClientM (createFile f) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
   case result of
-    Left e -> print e >> return False
+    Left e -> outputStrLn (show e) >> return False
     Right b -> cacheAdd f >> return b
     
-cacheAdd :: DfsFile -> IO ()
+cacheAdd :: DfsFile -> InputT IO ()
 cacheAdd f = do
-   cacheExists <- withMongoDbConnection $ do
+   cacheExists <-liftIO $  withMongoDbConnection $ do
      refs <- allCollections
      return $ any (=="CACHE") refs
-   when (cacheExists == False) $ do  
+   liftIO $ when (cacheExists == False) $ do  
      withMongoDbConnection $ do
        liftIO $ print "cache db missing, creating a new one..."
        --TODO: can't change size of doc when updating a capped collection, so this doesn't work
        -- need to find another way of limiting caching.
        --createCollection [Capped, MaxByteSize 100000, MaxItems 100] "CACHE"
        return ()
-   withMongoDbConnection $ upsert (select ["_id" =: (f_name f)] "CACHE") $ toBSON f
-   print $ (f_name f) ++ " added to cache"
+   liftIO $ withMongoDbConnection $ upsert (select ["_id" =: (f_name f)] "CACHE") $ toBSON f
+   outputStrLn $ (f_name f) ++ " added to cache"
    return ()
 
 fileApi :: Proxy FileApi
@@ -220,9 +261,11 @@ mkdir :: Maybe String -> Maybe String -> ClientM Bool
 ls :: Maybe String -> ClientM [DfsDirContents]
 createFile :: DfsFile -> ClientM Bool
 openFile :: Maybe String -> ClientM (Maybe DfsFile)
+lockFile :: Maybe String -> ClientM String
+unlockFile :: Maybe String -> ClientM String
 users :: ClientM [User]
 
-registerFileServer :<|> mkdir :<|> ls :<|> createFile :<|> openFile :<|> users = client dirApi
+registerFileServer :<|> mkdir :<|> ls :<|> createFile :<|> openFile :<|> lockFile :<|> unlockFile :<|> users = client dirApi
 
 authApi :: Proxy AuthApi
 authApi = Proxy

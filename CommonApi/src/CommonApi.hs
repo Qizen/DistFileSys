@@ -1,3 +1,4 @@
+
 {-# LANGUAGE DataKinds       #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeOperators   #-}
@@ -89,6 +90,8 @@ type DirApi = "registerFileServer" :> RemoteHost :> QueryParam "port" Int :> Get
   :<|> "ls" :> QueryParam "path" String :> Get '[JSON] [DfsDirContents]
   :<|> "createFile" :> ReqBody '[JSON] DfsFile :> Post '[JSON] Bool
   :<|> "openFile" :> QueryParam "path" String :> Get '[JSON] (Maybe DfsFile)
+  :<|> "lockFile" :> QueryParam "path" String :> Get '[JSON] String
+  :<|> "unlockFile" :> QueryParam "path" String :> Get '[JSON] String
   :<|> "users":> Get '[JSON] [User]
 
 type AuthApi = "createUser" :> QueryParam "username" String :> QueryParam "password" String :> Get '[JSON] Bool

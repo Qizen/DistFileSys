@@ -50,6 +50,8 @@ server = registerFileServer
   :<|> ls
   :<|> createFile
   :<|> openFile
+  :<|> lockFile
+  :<|> unlockFile
   :<|> returnUsers
 
 fileApi :: Proxy FileApi
@@ -151,6 +153,34 @@ openFile (Just path) = do
 openFile Nothing =
   return Nothing
 
+lockFile :: Maybe String -> Handler String
+lockFile (Just path) = do
+  l <- liftIO $ isLocked path
+  if l
+    then return "FAILURE: File already locked"
+    else do
+        liftIO $ withMongoDbConnection $ (upsert (select ["_id" =: path] "FILELOCKS") $ toBSON True)
+        return "SUCCESS: File locked"
+lockFile Nothing = return "FAILURE: No Parameter"
+
+unlockFile :: Maybe String -> Handler String
+unlockFile (Just path) = do
+  l <- liftIO $ isLocked path
+  if l
+    then do
+      liftIO $ withMongoDbConnection $ delete (select ["_id" =: path] "FILELOCKS")
+      return "SUCCESS: File unlocked"
+    else do return "SUCCESS: File was already unlocked"
+
+isLocked :: String -> IO (Bool)
+isLocked path = do
+  ls <- liftIO $ withMongoDbConnection $ do
+    refs <- find (select ["_id" =: path] "FILELOCKS") >>= drainCursor
+    return $ catMaybes $ map (\b -> fromBSON b :: Maybe Bool) refs
+  case ls of
+    [] -> return False
+    _ -> return $ ls!!0
+    
 returnUsers :: Handler [User]
 returnUsers = do
   liftIO $ print "calling users"
