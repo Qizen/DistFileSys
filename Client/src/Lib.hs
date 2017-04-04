@@ -44,7 +44,7 @@ startApp = runInputT defaultSettings (loop Nothing)
 
 loop :: Maybe String -> InputT IO ()
 loop mToken = do
-  a <- getInputLine "Select an Action\n"
+  a <- getInputLine "Enter an Action:\n"
   case a of
     Just "createUser" -> do
       runCreateUser
@@ -92,16 +92,16 @@ loop mToken = do
 
 runCreateUser :: InputT IO ()
 runCreateUser = do
-  u <- getInputLine "Enter a username:"
-  p <- getPassword (Just '*') "Enter a password:"
+  u <- getInputLine "Enter a username:\n"
+  p <- getPassword (Just '*') "Enter a password:\n"
   manager <- liftIO $ newManager defaultManagerSettings
   liftIO $ runClientM (createUser (u) (p)) (ClientEnv manager (BaseUrl Http authServerIp authServerPort ""))
   return ()
 
 runLogin :: InputT IO (Maybe String)
 runLogin = do
-  u <- getInputLine "Enter a username:"
-  p <- getPassword (Just '*') "Enter a password:"
+  u <- getInputLine "Enter a username:\n"
+  p <- getPassword (Just '*') "Enter a password:\n"
   manager <- liftIO $ newManager defaultManagerSettings
   res <- liftIO $ runClientM (login (u) (p)) (ClientEnv manager (BaseUrl Http authServerIp authServerPort ""))
   case res of
@@ -117,7 +117,7 @@ runLogin = do
 
 runGetFile :: String -> InputT IO ()
 runGetFile t = do
-  fn <- getInputLine "Enter a filename"
+  fn <- getInputLine "Enter a filename:\n"
   cachedFiles <- liftIO $ withMongoDbConnection $ do
     refs <- find (select ["_id" =: fn] "CACHE") >>= drainCursor
     return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsFile) refs
@@ -139,7 +139,7 @@ runGetFile t = do
 
 runWriteFile :: String -> InputT IO ()
 runWriteFile t = do
-  mpath <- getInputLine "Enter a filepath"
+  mpath <- getInputLine "Enter a filepath\n"
   case mpath of
     Nothing -> outputStrLn "No path provided"
     Just path -> do
@@ -176,11 +176,11 @@ runWriteFile t = do
                  s <- liftIO $ getModificationTime path
                  if (f_lastModified dFile) == (show s)
                    then do
-                     outputStrLn "cached file is same as server file, uploading"
+                     outputStrLn "Cached file is same as server file, uploading"
                      execWriteFile path
                      return ()
                    else do
-                     ans <- getInputLine "cached file is out of date, proceed anyway? y/n"
+                     ans <- getInputLine "Cached file is out of date, proceed anyway? y/n"
                      case ans of
                        Just "y" -> execWriteFile path >> return ()
                        _ -> outputStrLn $ show  dFile
@@ -188,7 +188,7 @@ runWriteFile t = do
 
 runLockFile :: String -> InputT IO ()
 runLockFile t = do
-  path <- getInputLine "Enter a filepath"
+  path <- getInputLine "Enter a filepath:\n"
   case path of
     Nothing -> outputStrLn "No path provided"
     p -> do
@@ -201,7 +201,7 @@ runLockFile t = do
 
 runUnlockFile :: String -> InputT IO ()
 runUnlockFile t = do
-  path <- getInputLine "Enter a filepath"
+  path <- getInputLine "Enter a filepath:\n"
   case path of
     Nothing -> outputStrLn "No path provided"
     p -> do
