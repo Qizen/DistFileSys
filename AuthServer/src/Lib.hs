@@ -22,6 +22,7 @@ import Data.Bson.Generic
 import Data.List.Split (splitOn)
 import Data.Maybe
 import qualified Data.Text as T
+import Data.Time.Clock
 import Database.MongoDB
 import GHC.Generics
 import Network.HTTP.Client (newManager, defaultManagerSettings)
@@ -67,7 +68,7 @@ createUser _ _ = do
   liftIO $ print "incorrect Params"
   return False
 
-login :: Maybe String -> Maybe String -> Handler (Either String String)
+login :: Maybe String -> Maybe String -> Handler (Either String DfsToken)
 login (Just username) (Just password)  = do
   ps <- liftIO $ withMongoDbConnection $ do
     refs <- find (select ["_id" =: username] "USERS") >>= drainCursor
@@ -79,8 +80,10 @@ login (Just username) (Just password)  = do
       let p = p_pass $ ps!!0
       liftIO $ print $ "provided: " ++ password ++ "/nExpected: " ++ p
       if p == password
-        then do 
-          return $ Right "foo"
+        then do
+          currTime <- liftIO $ getCurrentTime
+          let expiry = addUTCTime (30*60) currTime
+          return $ Right $ DfsToken username (show expiry)
         else do
           return $ Left "Incorrect Password"
 login _ _ = do

@@ -94,16 +94,16 @@ registerFileServer sock@(SockAddrInet _ addr) (Just port) = do
 
 registerFileServer _ Nothing = return "ERROR port needs to be defined"
 
-mkdir :: Maybe String -> Maybe String -> Handler Bool
-mkdir path foo = return False
+mkdir :: Maybe String -> Maybe String -> Maybe String -> Handler Bool
+mkdir token path foo = return False
 
-ls :: Maybe String -> Handler [DfsDirContents]
-ls path = do
+ls :: Maybe String -> Maybe String -> Handler [DfsDirContents]
+ls token path = do
   liftIO $ print "Calling ls"
   return $ [DfsDirContents "foo" False]
 
-createFile :: DfsFile -> Handler Bool
-createFile file = do
+createFile :: (DfsFile, DfsToken) -> Handler Bool
+createFile (file, token) = do
   servs <- liftIO $ withMongoDbConnection $ do
     retVals <- find (select [] "SERVERS") >>= drainCursor
     return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsServRef) retVals
@@ -120,8 +120,8 @@ createFile file = do
   liftIO $ withMongoDbConnection $ (upsert (select ["_id" =: (f_name file)] "FILES") $ toBSON file)
   return True
 
-openFile :: Maybe String -> Handler (Maybe DfsFile)
-openFile (Just path) = do
+openFile :: Maybe String -> Maybe String -> Handler (Maybe DfsFile)
+openFile (Just token) (Just path) = do
   -- look up file, see if we have it listed
   -- if so call the fileserver and return the result
   -- if not, return Nothing
@@ -150,30 +150,30 @@ openFile (Just path) = do
         Right fl -> do
           liftIO $ print ("fl: " ++ show fl)
           return $ Just (fl!!0)
-openFile Nothing =
+openFile Nothing Nothing =
   return Nothing
 
-lockFile :: Maybe String -> Handler String
-lockFile (Just path) = do
-  l <- liftIO $ isLocked path
+lockFile :: Maybe String -> Maybe String -> Handler String
+lockFile (Just token) (Just path) = do
+  l <- liftIO $ isLocked (t_user ((read token)::DfsToken)) path
   if l
     then return "FAILURE: File already locked"
     else do
         liftIO $ withMongoDbConnection $ (upsert (select ["_id" =: path] "FILELOCKS") $ toBSON True)
         return "SUCCESS: File locked"
-lockFile Nothing = return "FAILURE: No Parameter"
+lockFile Nothing Nothing = return "FAILURE: No Parameter"
 
-unlockFile :: Maybe String -> Handler String
-unlockFile (Just path) = do
-  l <- liftIO $ isLocked path
+unlockFile :: Maybe String -> Maybe String -> Handler String
+unlockFile (Just token) (Just path) = do
+  l <- liftIO $ isLocked (t_user ((read token)::DfsToken)) path
   if l
     then do
       liftIO $ withMongoDbConnection $ delete (select ["_id" =: path] "FILELOCKS")
       return "SUCCESS: File unlocked"
     else do return "SUCCESS: File was already unlocked"
 
-isLocked :: String -> IO (Bool)
-isLocked path = do
+isLocked :: String -> String -> IO (Bool)
+isLocked user path = do
   ls <- liftIO $ withMongoDbConnection $ do
     refs <- find (select ["_id" =: path] "FILELOCKS") >>= drainCursor
     return $ catMaybes $ map (\b -> fromBSON b :: Maybe Bool) refs

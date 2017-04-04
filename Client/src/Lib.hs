@@ -42,7 +42,7 @@ import CommonApi
 startApp :: IO ()
 startApp = runInputT defaultSettings (loop Nothing)
 
-loop :: Maybe String -> InputT IO ()
+loop :: Maybe DfsToken -> InputT IO ()
 loop mToken = do
   a <- getInputLine "Enter an Action:\n"
   case a of
@@ -98,7 +98,7 @@ runCreateUser = do
   liftIO $ runClientM (createUser (u) (p)) (ClientEnv manager (BaseUrl Http authServerIp authServerPort ""))
   return ()
 
-runLogin :: InputT IO (Maybe String)
+runLogin :: InputT IO (Maybe DfsToken)
 runLogin = do
   u <- getInputLine "Enter a username:\n"
   p <- getPassword (Just '*') "Enter a password:\n"
@@ -112,10 +112,10 @@ runLogin = do
       outputStrLn e2
       return Nothing
     Right (Right token) -> do
-      outputStrLn $ "SUCCESS! Token: " ++ token
+      outputStrLn $ "SUCCESS! Token: " ++ (show token)
       return (Just token)
 
-runGetFile :: String -> InputT IO ()
+runGetFile :: DfsToken -> InputT IO ()
 runGetFile t = do
   fn <- getInputLine "Enter a filename:\n"
   cachedFiles <- liftIO $ withMongoDbConnection $ do
@@ -125,7 +125,7 @@ runGetFile t = do
     [] -> do
       outputStrLn "Cache miss, querying server..."
       manager <- liftIO $ newManager defaultManagerSettings
-      res <- liftIO $ runClientM (openFile (fn)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+      res <- liftIO $ runClientM (openFile (Just (show t)) (fn)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
       case res of
         Left e -> outputStrLn $ show e
         Right (Just r) -> do
@@ -137,7 +137,7 @@ runGetFile t = do
       outputStrLn $ show $ cachedFiles!!0
   return ()
 
-runWriteFile :: String -> InputT IO ()
+runWriteFile :: DfsToken -> InputT IO ()
 runWriteFile t = do
   mpath <- getInputLine "Enter a filepath\n"
   case mpath of
@@ -158,7 +158,7 @@ runWriteFile t = do
              contents <- liftIO $ readFile path
              date <- liftIO $ getModificationTime path
              let f = DfsFile contents (show date) name
-             result <- liftIO $ runClientM (createFile f) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+             result <- liftIO $ runClientM (createFile (f, t)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
              case result of
                Left e -> outputStrLn $ show e
                Right r -> do
@@ -166,61 +166,61 @@ runWriteFile t = do
            _ -> do
              -- should get modification time only here, not entire file
              manager <- liftIO $ newManager defaultManagerSettings
-             res <- liftIO $ runClientM (openFile (Just name)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+             res <- liftIO $ runClientM (openFile (Just (show t)) (Just name)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
              case res of
                Left e -> outputStrLn $ show e
                Right Nothing -> do
-                 sUp <- execWriteFile path
+                 sUp <- execWriteFile t path
                  if sUp  then outputStrLn "Successfully uploaded" else outputStrLn "ERROR uploading"
                Right (Just dFile) -> do
                  s <- liftIO $ getModificationTime path
                  if (f_lastModified dFile) == (show s)
                    then do
                      outputStrLn "Cached file is same as server file, uploading"
-                     execWriteFile path
+                     execWriteFile t path
                      return ()
                    else do
                      ans <- getInputLine "Cached file is out of date, proceed anyway? y/n"
                      case ans of
-                       Just "y" -> execWriteFile path >> return ()
+                       Just "y" -> execWriteFile t path >> return ()
                        _ -> outputStrLn $ show  dFile
          else outputStrLn "File does not exist"
 
-runLockFile :: String -> InputT IO ()
+runLockFile :: DfsToken -> InputT IO ()
 runLockFile t = do
   path <- getInputLine "Enter a filepath:\n"
   case path of
     Nothing -> outputStrLn "No path provided"
     p -> do
       manager <- liftIO $ newManager defaultManagerSettings
-      res <- liftIO $ runClientM (lockFile (p)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+      res <- liftIO $ runClientM (lockFile (Just (show t)) (p)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
       case res of
         Left e -> outputStrLn $ show e
         Right r -> outputStrLn r        
   return ()
 
-runUnlockFile :: String -> InputT IO ()
+runUnlockFile :: DfsToken -> InputT IO ()
 runUnlockFile t = do
   path <- getInputLine "Enter a filepath:\n"
   case path of
     Nothing -> outputStrLn "No path provided"
     p -> do
       manager <- liftIO $ newManager defaultManagerSettings
-      res <- liftIO $ runClientM (unlockFile (p)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+      res <- liftIO $ runClientM (unlockFile (Just(show t)) (p)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
       case res of
         Left e -> outputStrLn $ show e
         Right r -> outputStrLn r        
   return ()
 
-execWriteFile :: String -> InputT IO Bool
-execWriteFile path = do
+execWriteFile :: DfsToken -> String -> InputT IO Bool
+execWriteFile t path = do
   let s = (splitOn "/" path)
   let name = s!!((length s)-1)
   manager <- liftIO $ newManager defaultManagerSettings
   contents <- liftIO $ readFile path
   date <- liftIO $ getModificationTime path
   let f = DfsFile contents (show date) name
-  result <- liftIO $ runClientM (createFile f) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+  result <- liftIO $ runClientM (createFile (f, t)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
   case result of
     Left e -> outputStrLn (show e) >> return False
     Right b -> cacheAdd f >> return b
@@ -257,12 +257,12 @@ dirApi :: Proxy DirApi
 dirApi = Proxy
 
 registerFileServer :: Maybe Int -> ClientM String
-mkdir :: Maybe String -> Maybe String -> ClientM Bool
-ls :: Maybe String -> ClientM [DfsDirContents]
-createFile :: DfsFile -> ClientM Bool
-openFile :: Maybe String -> ClientM (Maybe DfsFile)
-lockFile :: Maybe String -> ClientM String
-unlockFile :: Maybe String -> ClientM String
+mkdir :: Maybe String -> Maybe String -> Maybe String -> ClientM Bool
+ls :: Maybe String -> Maybe String -> ClientM [DfsDirContents]
+createFile :: (DfsFile, DfsToken) -> ClientM Bool
+openFile :: Maybe String -> Maybe String -> ClientM (Maybe DfsFile)
+lockFile :: Maybe String -> Maybe String -> ClientM String
+unlockFile :: Maybe String -> Maybe String -> ClientM String
 users :: ClientM [User]
 
 registerFileServer :<|> mkdir :<|> ls :<|> createFile :<|> openFile :<|> lockFile :<|> unlockFile :<|> users = client dirApi
@@ -271,6 +271,6 @@ authApi :: Proxy AuthApi
 authApi = Proxy
 
 createUser :: Maybe String -> Maybe String -> ClientM Bool
-login :: Maybe String -> Maybe String -> ClientM (Either String String)
+login :: Maybe String -> Maybe String -> ClientM (Either String DfsToken)
 
 createUser :<|> login = client authApi

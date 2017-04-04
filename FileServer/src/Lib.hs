@@ -49,13 +49,15 @@ dirApi :: Proxy DirApi
 dirApi = Proxy
 
 registerFileServer :: Maybe Int -> ClientM String
-mkdir :: Maybe String -> Maybe String -> ClientM Bool
-ls :: Maybe String -> ClientM [DfsDirContents]
-createFile :: DfsFile -> ClientM Bool
-openFile :: Maybe String -> ClientM (Maybe DfsFile)
+mkdir :: Maybe String -> Maybe String -> Maybe String -> ClientM Bool
+ls :: Maybe String -> Maybe String -> ClientM [DfsDirContents]
+createFile :: (DfsFile, DfsToken) -> ClientM Bool
+openFile :: Maybe String -> Maybe String -> ClientM (Maybe DfsFile)
+lockFile :: Maybe String -> Maybe String -> ClientM (String)
+unlockFile :: Maybe String -> Maybe String -> ClientM (String)
 users :: ClientM [User]
 
-registerFileServer :<|> mkdir :<|> ls :<|> createFile :<|> openFile :<|> users = client dirApi
+registerFileServer :<|> mkdir :<|> ls :<|> createFile :<|> openFile :<|> lockFile :<|> unlockFile :<|> users = client dirApi
 
 api :: Proxy FileApi
 api = Proxy

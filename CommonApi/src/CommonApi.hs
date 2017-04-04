@@ -71,13 +71,18 @@ data DfsServRef = DfsServRef
   , sr_port :: String
   } deriving (Eq, Generic, ToJSON, FromJSON, ToBSON, FromBSON, Show)
 
+data DfsToken = DfsToken
+  { t_user :: String
+  , t_expiry :: String
+  } deriving (Eq, Generic, ToJSON, FromJSON, ToBSON, FromBSON, Show, Read)
+
 deriving instance FromBSON String
 deriving instance ToBSON String
 
 deriving instance FromBSON Bool
 deriving instance ToBSON Bool
 
-$(deriveJSON defaultOptions ''User)
+$(deriveJSON defaultOptions ''User) 
 
 -- APIs
 type FileApi = "users" :> Get '[JSON] [User]
@@ -86,16 +91,16 @@ type FileApi = "users" :> Get '[JSON] [User]
   :<|> "listFiles" :> Get '[JSON] [DfsDateName]
 
 type DirApi = "registerFileServer" :> RemoteHost :> QueryParam "port" Int :> Get '[JSON] String
-  :<|> "mkdir" :> QueryParam "path" String :> QueryParam "foldName" String :> Get '[JSON] Bool
-  :<|> "ls" :> QueryParam "path" String :> Get '[JSON] [DfsDirContents]
-  :<|> "createFile" :> ReqBody '[JSON] DfsFile :> Post '[JSON] Bool
-  :<|> "openFile" :> QueryParam "path" String :> Get '[JSON] (Maybe DfsFile)
-  :<|> "lockFile" :> QueryParam "path" String :> Get '[JSON] String
-  :<|> "unlockFile" :> QueryParam "path" String :> Get '[JSON] String
+  :<|> "mkdir" :> QueryParam "token" String :> QueryParam "path" String :> QueryParam "foldName" String :> Get '[JSON] Bool
+  :<|> "ls" :> QueryParam "token" String :> QueryParam "path" String :> Get '[JSON] [DfsDirContents]
+  :<|> "createFile" :> ReqBody '[JSON] (DfsFile, DfsToken) :> Post '[JSON] Bool
+  :<|> "openFile" :> QueryParam "token" String :> QueryParam "path" String :> Get '[JSON] (Maybe DfsFile)
+  :<|> "lockFile" :> QueryParam "token" String :> QueryParam "path" String :> Get '[JSON] String
+  :<|> "unlockFile" :> QueryParam "token" String :> QueryParam "path" String :> Get '[JSON] String
   :<|> "users":> Get '[JSON] [User]
 
 type AuthApi = "createUser" :> QueryParam "username" String :> QueryParam "password" String :> Get '[JSON] Bool
-  :<|> "login" :> QueryParam "username" String :> QueryParam "password" String :> Get '[JSON] (Either String String)
+  :<|> "login" :> QueryParam "username" String :> QueryParam "password" String :> Get '[JSON] (Either String DfsToken)
   
 -- MongoDB Functions from use-haskell
 -- | Mongodb helpers...
