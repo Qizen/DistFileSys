@@ -49,27 +49,22 @@ dirApi :: Proxy DirApi
 dirApi = Proxy
 
 registerFileServer :: Maybe Int -> ClientM String
-mkdir :: Maybe String -> Maybe String -> Maybe String -> ClientM Bool
 ls :: Maybe String -> Maybe String -> ClientM [DfsDirContents]
 createFile :: (DfsFile, DfsToken) -> ClientM Bool
 openFile :: Maybe String -> Maybe String -> ClientM (Maybe DfsFile)
 lockFile :: Maybe String -> Maybe String -> ClientM (String)
 unlockFile :: Maybe String -> Maybe String -> ClientM (String)
-users :: ClientM [User]
 
-registerFileServer :<|> mkdir :<|> ls :<|> createFile :<|> openFile :<|> lockFile :<|> unlockFile :<|> users = client dirApi
+registerFileServer :<|> ls :<|> createFile :<|> openFile :<|> lockFile :<|> unlockFile = client dirApi
 
 api :: Proxy FileApi
 api = Proxy
 
 server :: Server FileApi
-server =  return users'
-    :<|> getFile
+server = getFile
     :<|> postFile
     :<|> listFiles
   where
-   -- users :: Handler [File]
-   -- users = return users'
     getFile :: Maybe String -> Handler [DfsFile]
     getFile Nothing = do return [DfsFile "ERROR" "ERROR" "ERROR"]
     getFile (Just fn) = do
@@ -91,10 +86,3 @@ server =  return users'
                t <- getModificationTime (filePath ++ f)
                return $ DfsDateName (show t) f) fs
       return dns
-      
-      
-users' :: [User]
-users' = [ User 1 "Isaac" "Newton"
-        , User 2 "Albert" "Einstein"
-        ]
-        

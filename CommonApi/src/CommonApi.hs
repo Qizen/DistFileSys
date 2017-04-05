@@ -39,12 +39,6 @@ authServerPort = 28645 :: Int
 
 -- Data Types
 
-data User = User
-  { userId        :: Int
-  , userFirstName :: String
-  , userLastName  :: String
-  } deriving (Eq, Show)
-
 data DfsFile = DfsFile
   { f_contents      :: String
   , f_lastModified  :: String
@@ -82,23 +76,18 @@ deriving instance ToBSON String
 deriving instance FromBSON Bool
 deriving instance ToBSON Bool
 
-$(deriveJSON defaultOptions ''User) 
-
 -- APIs
-type FileApi = "users" :> Get '[JSON] [User]
-  :<|> "getFile"   :> QueryParam "name" String :> Get '[JSON] [DfsFile]
+type FileApi = "getFile"   :> QueryParam "name" String :> Get '[JSON] [DfsFile]
   :<|> "postFile"  :> ReqBody '[JSON] DfsFile  :> Post '[JSON] Bool
   :<|> "listFiles" :> Get '[JSON] [DfsDateName]
 
 type DirApi = "registerFileServer" :> RemoteHost :> QueryParam "port" Int :> Get '[JSON] String
-  :<|> "mkdir" :> QueryParam "token" String :> QueryParam "path" String :> QueryParam "foldName" String :> Get '[JSON] Bool
-  :<|> "ls" :> QueryParam "token" String :> QueryParam "path" String :> Get '[JSON] [DfsDirContents]
+   :<|> "ls" :> QueryParam "token" String :> QueryParam "path" String :> Get '[JSON] [DfsDirContents]
   :<|> "createFile" :> ReqBody '[JSON] (DfsFile, DfsToken) :> Post '[JSON] Bool
   :<|> "openFile" :> QueryParam "token" String :> QueryParam "path" String :> Get '[JSON] (Maybe DfsFile)
   :<|> "lockFile" :> QueryParam "token" String :> QueryParam "path" String :> Get '[JSON] String
   :<|> "unlockFile" :> QueryParam "token" String :> QueryParam "path" String :> Get '[JSON] String
-  :<|> "users":> Get '[JSON] [User]
-
+  
 type AuthApi = "createUser" :> QueryParam "username" String :> QueryParam "password" String :> Get '[JSON] Bool
   :<|> "login" :> QueryParam "username" String :> QueryParam "password" String :> Get '[JSON] (Either String DfsToken)
   

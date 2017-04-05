@@ -47,24 +47,21 @@ api = Proxy
 
 server :: Server DirApi
 server = registerFileServer
-  :<|> mkdir
   :<|> ls
   :<|> createFile
   :<|> openFile
   :<|> lockFile
   :<|> unlockFile
-  :<|> returnUsers
 
 fileApi :: Proxy FileApi
 fileApi = Proxy
 
-users :: ClientM [User]
 getFile :: Maybe String -> ClientM [DfsFile]
 postFile :: DfsFile -> ClientM Bool
 listFiles :: ClientM [DfsDateName]
 
 
-users :<|> getFile :<|> postFile :<|> listFiles = client fileApi
+getFile :<|> postFile :<|> listFiles = client fileApi
 
 registerFileServer :: SockAddr -> Maybe Int -> Handler String
 registerFileServer sock@(SockAddrInet _ addr) (Just port) = do
@@ -100,9 +97,6 @@ validateToken t = do
   currTime <- getCurrentTime
   if (currTime < (read(t_expiry t)::UTCTime)) then return True
     else return False
-
-mkdir :: Maybe String -> Maybe String -> Maybe String -> Handler Bool
-mkdir token path foo = return False
 
 ls :: Maybe String -> Maybe String -> Handler [DfsDirContents]
 ls (Just token) (Just path) = do
@@ -239,12 +233,3 @@ isLocked user path = do
     [] -> return False
     _ -> return $ True
     
-returnUsers :: Handler [User]
-returnUsers = do
-  liftIO $ print "calling users"
-  return userlist
-
-userlist :: [User]
-userlist = [ User 1 "Isaac" "Newton"
-        , User 2 "Albert" "Einstein"
-        ]

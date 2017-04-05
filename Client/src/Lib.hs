@@ -237,9 +237,9 @@ runLockFile t = do
   path <- getInputLine "Enter a filepath:\n"
   case path of
     Nothing -> outputStrLn "No path provided"
-    p -> do
+    Just p -> do
       manager <- liftIO $ newManager defaultManagerSettings
-      res <- liftIO $ runClientM (lockFile (Just (show t)) (p)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+      res <- liftIO $ runClientM (lockFile (Just (show t)) (Just (escapeFilePath p))) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
       case res of
         Left e -> outputStrLn $ show e
         Right r -> outputStrLn r        
@@ -250,9 +250,9 @@ runUnlockFile t = do
   path <- getInputLine "Enter a filepath:\n"
   case path of
     Nothing -> outputStrLn "No path provided"
-    p -> do
+    Just p -> do
       manager <- liftIO $ newManager defaultManagerSettings
-      res <- liftIO $ runClientM (unlockFile (Just(show t)) (p)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+      res <- liftIO $ runClientM (unlockFile (Just(show t)) (Just (escapeFilePath p))) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
       case res of
         Left e -> outputStrLn $ show e
         Right r -> outputStrLn r        
@@ -287,6 +287,7 @@ runLs t = do
           mapM (\x -> do outputStrLn $ "\t" ++ (dc_name x)) files
           outputStrLn ""
           return ()
+          
 cacheAdd :: DfsFile -> InputT IO ()
 cacheAdd f = do
    cacheExists <-liftIO $  withMongoDbConnection $ do
@@ -300,34 +301,29 @@ cacheAdd f = do
        --createCollection [Capped, MaxByteSize 100000, MaxItems 100] "CACHE"
        return ()
    liftIO $ withMongoDbConnection $ upsert (select ["_id" =: (f_name f)] "CACHE") $ toBSON f
-   outputStrLn $ (f_name f) ++ " added to cache"
+   outputStrLn $ (unescapeFilePath(f_name f)) ++ " added to cache"
    return ()
 
 fileApi :: Proxy FileApi
 fileApi = Proxy
 
-f_users :: ClientM [User]
 getFile :: Maybe String -> ClientM [DfsFile]
 postFile :: DfsFile -> ClientM Bool
 listFiles :: ClientM [DfsDateName]
 
-
-f_users :<|> getFile :<|> postFile :<|> listFiles = client fileApi
-
+getFile :<|> postFile :<|> listFiles = client fileApi
 
 dirApi :: Proxy DirApi
 dirApi = Proxy
 
 registerFileServer :: Maybe Int -> ClientM String
-mkdir :: Maybe String -> Maybe String -> Maybe String -> ClientM Bool
 ls :: Maybe String -> Maybe String -> ClientM [DfsDirContents]
 createFile :: (DfsFile, DfsToken) -> ClientM Bool
 openFile :: Maybe String -> Maybe String -> ClientM (Maybe DfsFile)
 lockFile :: Maybe String -> Maybe String -> ClientM String
 unlockFile :: Maybe String -> Maybe String -> ClientM String
-users :: ClientM [User]
 
-registerFileServer :<|> mkdir :<|> ls :<|> createFile :<|> openFile :<|> lockFile :<|> unlockFile :<|> users = client dirApi
+registerFileServer :<|> ls :<|> createFile :<|> openFile :<|> lockFile :<|> unlockFile = client dirApi
 
 authApi :: Proxy AuthApi
 authApi = Proxy
