@@ -281,10 +281,11 @@ runLs t = do
         Right r -> do
           let folds = [x | x <- r, (dc_isFolder x)]
           let files = [x | x <- r, ((dc_isFolder x) == False)]
-          outputStrLn "Folders:"
+          outputStrLn "\nFolders:"
           mapM (\x -> do outputStrLn $ "\t" ++ (dc_name x)) folds
           outputStrLn "Files:"
           mapM (\x -> do outputStrLn $ "\t" ++ (dc_name x)) files
+          outputStrLn ""
           return ()
 cacheAdd :: DfsFile -> InputT IO ()
 cacheAdd f = do
