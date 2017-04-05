@@ -104,21 +104,24 @@ ls token path = do
 
 createFile :: (DfsFile, DfsToken) -> Handler Bool
 createFile (file, token) = do
-  servs <- liftIO $ withMongoDbConnection $ do
-    retVals <- find (select [] "SERVERS") >>= drainCursor
-    return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsServRef) retVals
-  liftIO $ print servs
-  liftIO $ print (length servs)
-  idx <- liftIO $ randomRIO ( 0, ((length servs) - 1))
-  liftIO $ print idx
-  let serv = (servs !! idx)
-  liftIO $ print $ "SERV: " ++ (show serv)
-  manager <- liftIO $ newManager defaultManagerSettings
-  liftIO $ runClientM (postFile file) (ClientEnv manager (BaseUrl Http (sr_ip serv) (read(sr_port serv) :: Int)  ""))
-  -- TODO should check that the post was successful
-  -- store this mapping
-  liftIO $ withMongoDbConnection $ (upsert (select ["_id" =: (f_name file)] "FILES") $ toBSON file)
-  return True
+  writeable <- liftIO $ isUnlockable (t_user token) (f_name file)
+  if writeable then do
+    servs <- liftIO $ withMongoDbConnection $ do
+      retVals <- find (select [] "SERVERS") >>= drainCursor
+      return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsServRef) retVals
+    liftIO $ print servs
+    liftIO $ print (length servs)
+    idx <- liftIO $ randomRIO ( 0, ((length servs) - 1))
+    liftIO $ print idx
+    let serv = (servs !! idx)
+    liftIO $ print $ "SERV: " ++ (show serv)
+    manager <- liftIO $ newManager defaultManagerSettings
+    liftIO $ runClientM (postFile file) (ClientEnv manager (BaseUrl Http (sr_ip serv) (read(sr_port serv) :: Int)  ""))
+    -- TODO should check that the post was successful
+    -- store this mapping
+    liftIO $ withMongoDbConnection $ (upsert (select ["_id" =: (f_name file)] "FILES") $ toBSON file)
+    return True
+  else return False
 
 openFile :: Maybe String -> Maybe String -> Handler (Maybe DfsFile)
 openFile (Just token) (Just path) = do
@@ -155,31 +158,44 @@ openFile Nothing Nothing =
 
 lockFile :: Maybe String -> Maybe String -> Handler String
 lockFile (Just token) (Just path) = do
-  l <- liftIO $ isLocked (t_user ((read token)::DfsToken)) path
+  let t = ((read token)::DfsToken)
+  liftIO $ print $ (t_user t) ++ " wants to lock " ++ path
+  l <- liftIO $ isLocked (t_user t) path
   if l
     then return "FAILURE: File already locked"
     else do
-        liftIO $ withMongoDbConnection $ (upsert (select ["_id" =: path] "FILELOCKS") $ toBSON True)
+        liftIO $ withMongoDbConnection $ (upsert (select ["_id" =: path] "FILELOCKS") $ toBSON t)
         return "SUCCESS: File locked"
 lockFile Nothing Nothing = return "FAILURE: No Parameter"
 
 unlockFile :: Maybe String -> Maybe String -> Handler String
 unlockFile (Just token) (Just path) = do
-  l <- liftIO $ isLocked (t_user ((read token)::DfsToken)) path
+  l <- liftIO $ isUnlockable (t_user ((read token)::DfsToken)) path
   if l
     then do
       liftIO $ withMongoDbConnection $ delete (select ["_id" =: path] "FILELOCKS")
       return "SUCCESS: File unlocked"
-    else do return "SUCCESS: File was already unlocked"
+    else do return "FAILURE: the file is not unlockable"
 
+isUnlockable :: String -> String -> IO (Bool)
+isUnlockable user path = do
+   ls <- liftIO $ withMongoDbConnection $ do
+     refs <- find (select ["_id" =: path] "FILELOCKS") >>= drainCursor
+     return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsToken) refs
+   case ls of
+     [] -> return True
+     l -> do
+       let t = ls!!0
+       return ((t_user t) == user)
+  
 isLocked :: String -> String -> IO (Bool)
 isLocked user path = do
   ls <- liftIO $ withMongoDbConnection $ do
     refs <- find (select ["_id" =: path] "FILELOCKS") >>= drainCursor
-    return $ catMaybes $ map (\b -> fromBSON b :: Maybe Bool) refs
+    return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsToken) refs
   case ls of
     [] -> return False
-    _ -> return $ ls!!0
+    _ -> return $ True
     
 returnUsers :: Handler [User]
 returnUsers = do

@@ -33,6 +33,7 @@ library
                      , text
                      , split
                      , haskeline
+                     , time
   default-language:    Haskell2010
 
 executable Client-exe

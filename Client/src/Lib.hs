@@ -24,6 +24,7 @@ import Data.Bson.Generic
 import Data.List.Split (splitOn)
 import Data.Maybe
 import qualified Data.Text as T
+import Data.Time.Clock
 import Database.MongoDB
 import GHC.Generics
 import Network.HTTP.Client (newManager, defaultManagerSettings)
@@ -68,6 +69,10 @@ loop mToken = do
         Just t -> do
           runWriteFile t
           loop mToken
+    Just "uploadFile" -> do
+      case mToken of
+        Nothing -> outputStrLn "You are not logged in" >> loop mToken
+        Just t -> runUploadFile t >> loop mToken
     Just "lockFile" -> do
       case mToken of
         Nothing -> do
@@ -118,14 +123,15 @@ runLogin = do
 runGetFile :: DfsToken -> InputT IO ()
 runGetFile t = do
   fn <- getInputLine "Enter a filename:\n"
+  let name = escapeFilePath (unMaybeString fn)
   cachedFiles <- liftIO $ withMongoDbConnection $ do
-    refs <- find (select ["_id" =: fn] "CACHE") >>= drainCursor
+    refs <- find (select ["_id" =: name] "CACHE") >>= drainCursor
     return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsFile) refs
   case cachedFiles of
     [] -> do
       outputStrLn "Cache miss, querying server..."
       manager <- liftIO $ newManager defaultManagerSettings
-      res <- liftIO $ runClientM (openFile (Just (show t)) (fn)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+      res <- liftIO $ runClientM (openFile (Just (show t)) (Just name)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
       case res of
         Left e -> outputStrLn $ show e
         Right (Just r) -> do
@@ -137,9 +143,9 @@ runGetFile t = do
       outputStrLn $ show $ cachedFiles!!0
   return ()
 
-runWriteFile :: DfsToken -> InputT IO ()
-runWriteFile t = do
-  mpath <- getInputLine "Enter a filepath\n"
+runUploadFile :: DfsToken -> InputT IO ()
+runUploadFile t = do
+  mpath <- getInputLine "Enter the file's location\n"
   case mpath of
     Nothing -> outputStrLn "No path provided"
     Just path -> do
@@ -147,44 +153,81 @@ runWriteFile t = do
        if (exists) then do
          let s = (splitOn "/" path)
          let name = s!!((length s)-1)
-         outputStrLn $ "Checking for file " ++ name ++ " in cache"
-         cachedFiles <- liftIO $ withMongoDbConnection $ do
-           refs <- find (select ["_id" =: name] "CACHE") >>= drainCursor
-           return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsFile) refs
-         case cachedFiles of
-           [] -> do
-             outputStrLn "Nothing in cache, proceeding with upload"
-             manager <- liftIO $ newManager defaultManagerSettings
-             contents <- liftIO $ readFile path
-             date <- liftIO $ getModificationTime path
-             let f = DfsFile contents (show date) name
-             result <- liftIO $ runClientM (createFile (f, t)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
-             case result of
-               Left e -> outputStrLn $ show e
-               Right r -> do
-                 if r then outputStrLn "Successfully uploaded" else outputStrLn "ERROR uploading"
-           _ -> do
-             -- should get modification time only here, not entire file
-             manager <- liftIO $ newManager defaultManagerSettings
-             res <- liftIO $ runClientM (openFile (Just (show t)) (Just name)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
-             case res of
-               Left e -> outputStrLn $ show e
-               Right Nothing -> do
-                 sUp <- execWriteFile t path
-                 if sUp  then outputStrLn "Successfully uploaded" else outputStrLn "ERROR uploading"
-               Right (Just dFile) -> do
-                 s <- liftIO $ getModificationTime path
-                 if (f_lastModified dFile) == (show s)
-                   then do
-                     outputStrLn "Cached file is same as server file, uploading"
-                     execWriteFile t path
-                     return ()
-                   else do
-                     ans <- getInputLine "Cached file is out of date, proceed anyway? y/n"
-                     case ans of
-                       Just "y" -> execWriteFile t path >> return ()
-                       _ -> outputStrLn $ show  dFile
-         else outputStrLn "File does not exist"
+         contents <- liftIO $ readFile path
+         date <- liftIO $ getModificationTime path
+         uploadPath <- getInputLine "Enter the folder under which you want to store this file on the server"
+         let uP = unMaybeString uploadPath
+         let safeName = escapeFilePath uP
+         let f = DfsFile contents (show date) (uP ++ name)
+         checkCacheAndUpload f t
+       else outputStrLn "File does not exist"
+
+runWriteFile :: DfsToken -> InputT IO ()
+runWriteFile token = do
+  inPath <- getInputLine "Enter the path and name of the file\n"
+  let path = escapeFilePath (unMaybeString inPath)
+  utime <- liftIO $ getCurrentTime
+  let time = show utime
+  outputStrLn "Enter the contents of the file, terminated by double-enter"
+  contents <- getMuchInput "" False
+  let f = DfsFile contents time path
+  checkCacheAndUpload f token
+
+getMuchInput :: String -> Bool -> InputT IO (String)
+getMuchInput prev wasEmpty = do
+  line <- getInputLine ""
+  let ln = unMaybeString line
+  case (ln, wasEmpty) of
+    ("", True) -> return prev
+    ("", False) -> getMuchInput prev True
+    (s, True) -> getMuchInput (prev ++ "\n\n" ++ s) False
+    (s, False) -> getMuchInput (prev ++ "\n" ++ s) False
+    
+escapeFilePath :: String -> String
+escapeFilePath s = T.unpack $ T.replace "/" "#" $ T.pack s
+
+unescapeFilePath :: String -> String
+unescapeFilePath s = T.unpack $ T.replace "#" "/" $ T.pack s
+
+checkCacheAndUpload :: DfsFile -> DfsToken -> InputT IO ()
+checkCacheAndUpload file token = do
+  outputStrLn $ "Checking for file " ++ (unescapeFilePath (f_name file)) ++ " in cache"
+  cachedFiles <- liftIO $ withMongoDbConnection $ do
+    refs <- find (select ["_id" =: (f_name file)] "CACHE") >>= drainCursor
+    return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsFile) refs
+  case cachedFiles of
+    [] -> do
+      outputStrLn "Nothing in cache, proceeding with upload"
+      manager <- liftIO $ newManager defaultManagerSettings
+      result <- liftIO $ runClientM (createFile (file, token)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+      case result of
+        Left e -> outputStrLn $ show e
+        Right r -> do
+          if r then outputStrLn "Successfully uploaded" else outputStrLn "ERROR uploading, maybe file is locked?"
+    _ -> do
+      -- should get modification time only here, not entire file
+      manager <- liftIO $ newManager defaultManagerSettings
+      res <- liftIO $ runClientM (openFile (Just (show token)) (Just (f_name file))) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+      case res of
+        Left e -> outputStrLn $ show e
+        Right Nothing -> do
+          sUp <- execWriteFile token file
+          if sUp  then outputStrLn "Successfully uploaded" else outputStrLn "ERROR uploading"
+        Right (Just dFile) -> do
+          if (f_lastModified dFile) == (f_lastModified file)
+            then do
+              outputStrLn "Cached file is same as server file, uploading"
+              execWriteFile token file
+              return ()
+            else do
+              ans <- getInputLine "Cached file is out of date, proceed anyway? y/n"
+              case ans of
+                Just "y" -> execWriteFile token file  >> return ()
+                _ -> outputStrLn $ show  dFile
+               
+unMaybeString :: Maybe String -> String
+unMaybeString Nothing = ""
+unMaybeString (Just s) = s
 
 runLockFile :: DfsToken -> InputT IO ()
 runLockFile t = do
@@ -212,18 +255,14 @@ runUnlockFile t = do
         Right r -> outputStrLn r        
   return ()
 
-execWriteFile :: DfsToken -> String -> InputT IO Bool
-execWriteFile t path = do
-  let s = (splitOn "/" path)
-  let name = s!!((length s)-1)
+execWriteFile :: DfsToken -> DfsFile -> InputT IO Bool
+execWriteFile t file = do
   manager <- liftIO $ newManager defaultManagerSettings
-  contents <- liftIO $ readFile path
-  date <- liftIO $ getModificationTime path
-  let f = DfsFile contents (show date) name
-  result <- liftIO $ runClientM (createFile (f, t)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+  result <- liftIO $ runClientM (createFile (file, t)) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
   case result of
     Left e -> outputStrLn (show e) >> return False
-    Right b -> cacheAdd f >> return b
+    Right True -> cacheAdd file >> outputStrLn "File successfully written" >> return True
+    Right False -> outputStrLn "File writing failed, the file may be locked" >> return False
     
 cacheAdd :: DfsFile -> InputT IO ()
 cacheAdd f = do
