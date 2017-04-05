@@ -89,7 +89,10 @@ loop mToken = do
         Just t -> do
           runUnlockFile t
           loop mToken
-      
+    Just "ls" -> do
+      case mToken of
+        Nothing -> outputStrLn "You are not logged in" >> loop mToken
+        Just t -> runLs t >> loop mToken
     Just "quit" -> return ()
     _ -> do
       outputStrLn "Not a valid option"
@@ -263,7 +266,26 @@ execWriteFile t file = do
     Left e -> outputStrLn (show e) >> return False
     Right True -> cacheAdd file >> outputStrLn "File successfully written" >> return True
     Right False -> outputStrLn "File writing failed, the file may be locked" >> return False
-    
+
+
+runLs :: DfsToken -> InputT IO ()
+runLs t = do
+  path <- getInputLine "Enter the folder you'd like to ls:\n"
+  case path of
+    Nothing -> outputStrLn  "Nothing entered"
+    Just p -> do 
+      manager <- liftIO $ newManager defaultManagerSettings
+      res <- liftIO $ runClientM (ls (Just(show t)) (Just (escapeFilePath p))) (ClientEnv manager (BaseUrl Http dirServerIp dirServerPort ""))
+      case res of
+        Left e -> outputStrLn (show e) >> return ()
+        Right r -> do
+          let folds = [x | x <- r, (dc_isFolder x)]
+          let files = [x | x <- r, ((dc_isFolder x) == False)]
+          outputStrLn "Folders:"
+          mapM (\x -> do outputStrLn $ "\t" ++ (dc_name x)) folds
+          outputStrLn "Files:"
+          mapM (\x -> do outputStrLn $ "\t" ++ (dc_name x)) files
+          return ()
 cacheAdd :: DfsFile -> InputT IO ()
 cacheAdd f = do
    cacheExists <-liftIO $  withMongoDbConnection $ do

@@ -98,10 +98,32 @@ mkdir :: Maybe String -> Maybe String -> Maybe String -> Handler Bool
 mkdir token path foo = return False
 
 ls :: Maybe String -> Maybe String -> Handler [DfsDirContents]
-ls token path = do
+ls (Just token) (Just path) = do
   liftIO $ print "Calling ls"
-  return $ [DfsDirContents "foo" False]
+  let p = if path == "" || (T.isSuffixOf "#" (T.pack path)) then T.pack path else T.pack $ path++"#"
+  retVals <- liftIO $ withMongoDbConnection $ do
+    -- todo regex escape the path string to avoid weird matches
+    liftIO $ print $  "REGEX : " ++ show (T.append "/^" (T.append p "/"))
+    --"_id" =: Regex (T.append "/^" (T.append p "/")
+    --("{$regex: /^Docs/ }"::T.Text)
+    refs <- find (select [("_id"::T.Text) =: (Regex p "")] "FILES") >>= drainCursor
+    return $ catMaybes $ map (\b -> fromBSON b :: Maybe DfsFileRef) refs
+  liftIO $ print $ "#### Here are the returned values ####\n " ++ show retVals
+  let names = map (dnname.fr_mData) retVals
+  let relNames = map (drop (T.length p)) names
+  let result = map createDirCont relNames
+  return $ result
 
+createDirCont :: String -> DfsDirContents
+createDirCont n = do
+  if any (=='#') n
+    then do
+      let fName = (splitOn "#" n)!!0
+      DfsDirContents fName True
+    else do
+      DfsDirContents n False
+    
+  
 createFile :: (DfsFile, DfsToken) -> Handler Bool
 createFile (file, token) = do
   writeable <- liftIO $ isUnlockable (t_user token) (f_name file)
